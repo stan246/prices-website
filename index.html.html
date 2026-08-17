@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>指数行情</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --border: #e9ecef;
+    --text: #212529;
+    --muted: #868e96;
+    --up: #e03131;      /* 涨 = 红 */
+    --down: #2f9e44;    /* 跌 = 绿 */
+    --flat: #868e96;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 20px 40px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .title { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
+  .meta { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .badge { padding: 3px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .badge.open  { background: #e7f5ec; color: var(--down); }
+  .badge.break { background: #fff4e6; color: #e8590c; }
+  .badge.close { background: #f1f3f5; color: var(--muted); }
+  .refresh-btn {
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    padding: 7px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .refresh-btn:hover { background: #f1f3f5; border-color: #ced4da; }
+  .refresh-btn:active { background: #e9ecef; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  @media (max-width: 480px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 18px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .name { font-size: 15px; font-weight: 600; }
+  .code { font-size: 12px; color: var(--muted); }
+  .price-row { display: flex; align-items: baseline; gap: 5px; margin-bottom: 6px; }
+  .price { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+  .unit { font-size: 13px; color: var(--muted); }
+  .change { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .change .arrow { font-size: 12px; margin-right: 2px; }
+  .change .amt { margin-left: 6px; font-weight: 500; opacity: 0.85; }
+  .up   { color: var(--up); }
+  .down { color: var(--down); }
+  .flat { color: var(--flat); }
+  footer { margin-top: 22px; font-size: 12px; color: var(--muted); line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="title">指数行情</div>
+    <div class="meta">
+      <span class="badge close" id="status-badge">加载中…</span>
+      <span id="update-time">最后更新 —</span>
+      <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()">刷新</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-head"><span class="name">纳指ETF</span><span class="code">159501</span></div>
+      <div class="price-row"><span class="price" id="p-159501">—</span><span class="unit">元</span></div>
+      <div class="change flat" id="c-159501"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="name">标普500ETF</span><span class="code">513500</span></div>
+      <div class="price-row"><span class="price" id="p-513500">—</span><span class="unit">元</span></div>
+      <div class="change flat" id="c-513500"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="name">黄金</span><span class="code">Au99.99</span></div>
+      <div class="price-row"><span class="price" id="p-AU9999">—</span><span class="unit">元/克</span></div>
+      <div class="change flat" id="c-AU9999"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="name">红利成长</span><span class="code">931157</span></div>
+      <div class="price-row"><span class="price" id="p-931157">—</span><span class="unit">点</span></div>
+      <div class="change flat" id="c-931157"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
+    </div>
+  </div>
+
+  <footer>
+    <div id="source-label">数据来源：加载中…</div>
+    <div>每 45 秒自动刷新 · 行情仅供参考，不构成投资建议</div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var REFRESH_MS = 45000;
+  var UT = 'fa5fd1943c7b386f172d6893dbfba10b';
+
+  var DEC = {
+    '159501': { price: 3, change: 3 },
+    '513500': { price: 3, change: 3 },
+    'AU9999': { price: 2, change: 2 },
+    '931157': { price: 2, change: 2 }
+  };
+  var SECID = { '159501': '0.159501', '513500': '1.513500', '931157': '2.931157' };
+  var ORDER = ['159501', '513500', 'AU9999', '931157'];
+
+  var timer = null;
+  function $(id) { return document.getElementById(id); }
+
+  function signClass(v) { if (v > 0) return 'up'; if (v < 0) return 'down'; return 'flat'; }
+  function arrow(v) { if (v > 0) return '▲'; if (v < 0) return '▼'; return '—'; }
+  function isNum(v) { return v !== null && v !== undefined && !isNaN(v) && v !== '-'; }
+  function fmt(v, dec) { return isNum(v) ? Number(v).toFixed(dec) : '—'; }
+  function signed(v, dec) { if (!isNum(v)) return '—'; var n = Number(v); return (n > 0 ? '+' : '') + n.toFixed(dec); }
+
+  function setCard(key, price, changePct, changeAmt) {
+    var d = DEC[key];
+    $('p-' + key).textContent = fmt(price, d.price);
+    var cls = signClass(changePct);
+    var cEl = $('c-' + key);
+    cEl.className = 'change ' + cls;
+    cEl.querySelector('.arrow').textContent = arrow(changePct);
+    cEl.querySelector('.pct').textContent = signed(changePct, 2) + '%';
+    cEl.querySelector('.amt').textContent = isNum(changeAmt) ? signed(changeAmt, d.change) : '';
+  }
+  function setError(key) {
+    $('p-' + key).textContent = '—';
+    var cEl = $('c-' + key);
+    cEl.className = 'change flat';
+    cEl.querySelector('.arrow').textContent = '—';
+    cEl.querySelector('.pct').textContent = '获取失败';
+    cEl.querySelector('.amt').textContent = '';
+  }
+
+  function updateTime() {
+    var d = new Date();
+    var hh = ('0' + d.getHours()).slice(-2), mm = ('0' + d.getMinutes()).slice(-2), ss = ('0' + d.getSeconds()).slice(-2);
+    $('update-time').textContent = '最后更新 ' + hh + ':' + mm + ':' + ss;
+  }
+  function updateStatus() {
+    var d = new Date(), day = d.getDay(), t = d.getHours() * 60 + d.getMinutes();
+    var badge = $('status-badge');
+    if (day === 0 || day === 6) { badge.textContent = '周末休市'; badge.className = 'badge close'; }
+    else if (t < 570) { badge.textContent = '未开盘'; badge.className = 'badge close'; }
+    else if (t < 690) { badge.textContent = '交易中'; badge.className = 'badge open'; }
+    else if (t < 780) { badge.textContent = '午间休市'; badge.className = 'badge break'; }
+    else if (t < 900) { badge.textContent = '交易中'; badge.className = 'badge open'; }
+    else { badge.textContent = '已收盘'; badge.className = 'badge close'; }
+  }
+
+  function ulistUrl(cb) {
+    return 'https://push2.eastmoney.com/api/qt/ulist.np/get?secids=' +
+      SECID['159501'] + ',' + SECID['513500'] + ',' + SECID['931157'] +
+      '&fields=f2,f3,f4,f12,f14&fltt=2&ut=' + UT + (cb ? '&cb=' + cb : '');
+  }
+  function clistUrl(cb) {
+    return 'https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=20&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:118' +
+      '&fields=f2,f3,f4,f12,f14&ut=' + UT + (cb ? '&cb=' + cb : '');
+  }
+
+  function buildMap(ulist, clist) {
+    var map = {};
+    if (ulist && ulist.data && ulist.data.diff) {
+      ulist.data.diff.forEach(function (it) { map[it.f12] = { price: it.f2, pct: it.f3, amt: it.f4 }; });
+    }
+    if (clist && clist.data && clist.data.diff) {
+      for (var i = 0; i < clist.data.diff.length; i++) {
+        var it = clist.data.diff[i];
+        if (it.f12 === 'AU9999') { map['AU9999'] = { price: it.f2, pct: it.f3, amt: it.f4 }; break; }
+      }
+    }
+    return map;
+  }
+
+  // JSONP
+  function jsonp(url, cbName, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      var done = false;
+      var to = setTimeout(function () { if (!done) { done = true; cleanup(); reject(new Error('timeout')); } }, timeoutMs);
+      function cleanup() {
+        clearTimeout(to);
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cbName] = function (data) { if (done) return; done = true; cleanup(); resolve(data); };
+      script.onerror = function () { if (!done) { done = true; cleanup(); reject(new Error('script error')); } };
+      script.src = url;
+      document.head.appendChild(script);
+    });
+  }
+
+  // 策略一：JSONP（首选，绕 CORS）
+  function fetchByJsonp() {
+    return Promise.all([
+      jsonp(ulistUrl('__emUlist'), '__emUlist', 5000),
+      jsonp(clistUrl('__emClist'), '__emClist', 5000)
+    ]).then(function (rs) { return buildMap(rs[0], rs[1]); });
+  }
+  // 策略二：fetch + CORS（兜底）
+  function fetchByFetch() {
+    return Promise.all([
+      fetch(ulistUrl(''), { mode: 'cors' }).then(function (r) { return r.json(); }),
+      fetch(clistUrl(''), { mode: 'cors' }).then(function (r) { return r.json(); })
+    ]).then(function (rs) { return buildMap(rs[0], rs[1]); });
+  }
+
+  function fetchEastmoney() {
+    return fetchByJsonp().catch(function () { return fetchByFetch(); });
+  }
+
+  // 腾讯兜底（仅两只 ETF，脚本标签直取，无需 CORS）
+  function fetchTencent() {
+    return new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      var done = false;
+      var to = setTimeout(function () { if (!done) { done = true; cleanup(); reject(new Error('timeout')); } }, 6000);
+      function cleanup() { clearTimeout(to); if (script.parentNode) script.parentNode.removeChild(script); }
+      script.onload = function () {
+        if (done) return;
+        done = true; cleanup();
+        try {
+          var ok = 0;
+          ['sz159501', 'sh513500'].forEach(function (tc) {
+            var key = tc.replace(/^(sz|sh)/, '');
+            var raw = window['v_' + tc];
+            if (!raw) { setError(key); return; }
+            var arr = raw.split('~');
+            if (arr.length < 33) { setError(key); return; }
+            setCard(key, parseFloat(arr[3]), parseFloat(arr[32]), parseFloat(arr[31]));
+            ok++;
+          });
+          if (ok > 0) resolve('腾讯'); else reject(new Error('no data'));
+        } catch (e) { reject(e); }
+      };
+      script.onerror = function () { if (!done) { done = true; cleanup(); reject(new Error('script error')); } };
+      script.src = 'https://qt.gtimg.cn/q=sz159501,sh513500';
+      document.head.appendChild(script);
+    });
+  }
+
+  function refresh() {
+    updateTime();
+    updateStatus();
+    fetchEastmoney()
+      .then(function (map) {
+        var missing = ORDER.filter(function (k) { return !map[k]; });
+        if (missing.length > 0) throw new Error('missing ' + missing.join(','));
+        ORDER.forEach(function (k) { setCard(k, map[k].price, map[k].pct, map[k].amt); });
+        $('source-label').textContent = '数据来源：东方财富';
+      })
+      .catch(function () {
+        setError('AU9999');
+        setError('931157');
+        fetchTencent()
+          .then(function (src) {
+            $('source-label').textContent = '数据来源：' + src + '（黄金/红利成长暂不可用）';
+          })
+          .catch(function () {
+            $('source-label').textContent = '数据获取失败，请检查网络后点击「刷新」';
+          });
+      });
+  }
+
+  function start() {
+    refresh();
+    if (timer) clearInterval(timer);
+    timer = setInterval(refresh, REFRESH_MS);
+  }
+
+  window.manualRefresh = function () { refresh(); };
+  start();
+})();
+</script>
+</body>
+</html>
