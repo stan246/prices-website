@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>指数行情</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -96,7 +99,7 @@
 
   <footer>
     <div id="source-label">数据来源：加载中…</div>
-    <div>每 45 秒自动刷新 · 行情仅供参考，不构成投资建议 · v3</div>
+    <div>每 45 秒自动刷新 · 行情仅供参考，不构成投资建议 · v5</div>
   </footer>
 </div>
 
@@ -104,7 +107,7 @@
 (function () {
   var REFRESH_MS = 45000;
   var UT = 'fa5fd1943c7b386f172d6893dbfba10b';
-  var EM_BASE = 'https://push2.eastmoney.com/api/qt/ulist.np/get?fields=f2,f3,f4,f12,f14&fltt=2&ut=' + UT + '&secids=';
+  var EM = 'https://push2.eastmoney.com/api/qt/ulist.np/get?fields=f2,f3,f4,f12,f14&fltt=2&ut=' + UT + '&secids=';
 
   var DEC = {
     '159501': { price: 3, change: 3 },
@@ -112,7 +115,6 @@
     'AU9999': { price: 2, change: 2 },
     '931157': { price: 2, change: 2 }
   };
-  var KEYS = ['159501', '513500', 'AU9999', '931157'];
   var timer = null;
   function $(id) { return document.getElementById(id); }
 
@@ -132,6 +134,7 @@
     cEl.querySelector('.pct').textContent = signed(changePct, 2) + '%';
     cEl.querySelector('.amt').textContent = isNum(changeAmt) ? signed(changeAmt, d.change) : '';
   }
+  function setSource(t) { $('source-label').textContent = t; }
 
   function updateTime() {
     var d = new Date();
@@ -149,27 +152,46 @@
     else { badge.textContent = '已收盘'; badge.className = 'badge close'; }
   }
 
-  // CORS fetch（超时自动中断）
+  // ---------- 脚本标签 JSONP（绕开 fetch/CORS 限制） ----------
+  function jsonp(url, cbName, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      var done = false;
+      var t = setTimeout(function () { if (!done) { done = true; cleanup(); reject(new Error('timeout')); } }, timeoutMs);
+      function cleanup() {
+        clearTimeout(t);
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cbName] = function (data) { if (done) return; done = true; cleanup(); resolve(data); };
+      script.onerror = function () { if (!done) { done = true; cleanup(); reject(new Error('load error')); } };
+      script.src = url;
+      document.head.appendChild(script);
+    });
+  }
+
+  // CORS fetch 兜底（超时自动中断）
   function fetchJson(url, timeoutMs) {
     return new Promise(function (resolve, reject) {
       var ctrl = new AbortController();
       var timer = setTimeout(function () { ctrl.abort(); }, timeoutMs);
       fetch(url, { signal: ctrl.signal })
-        .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+        .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
         .then(function (d) { clearTimeout(timer); resolve(d); })
         .catch(function (e) { clearTimeout(timer); reject(e); });
     });
   }
-  // 失败自动重试一次
-  function fetchWithRetry(url, timeoutMs) {
-    return fetchJson(url, timeoutMs).catch(function () {
-      return new Promise(function (resolve) { setTimeout(resolve, 350); }).then(function () {
-        return fetchJson(url, timeoutMs);
-      });
-    });
+
+  // 从东财 JSONP 响应里提取某个标的
+  function extract(data, code) {
+    var diff = (data && data.data && data.data.diff) ? data.data.diff : [];
+    for (var i = 0; i < diff.length; i++) {
+      if (diff[i].f12 === code) return diff[i];
+    }
+    return null;
   }
 
-  // 腾讯兜底（仅两只 ETF，脚本标签）
+  // ---------- 腾讯：ETF（脚本标签直取变量） ----------
   function loadTencentEtf() {
     var script = document.createElement('script');
     var done = false;
@@ -178,42 +200,62 @@
     script.onload = function () {
       if (done) return;
       done = true; cleanup();
-      ['sz159501', 'sh513500'].forEach(function (tc) {
-        var key = tc.replace(/^(sz|sh)/, '');
-        var raw = window['v_' + tc];
+      var ok = 0;
+      [['sz159501', '159501'], ['sh513500', '513500']].forEach(function (p) {
+        var raw = window['v_' + p[0]];
         if (!raw) return;
         var arr = raw.split('~');
         if (arr.length < 33) return;
-        setCard(key, parseFloat(arr[3]), parseFloat(arr[32]), parseFloat(arr[31]));
+        setCard(p[1], parseFloat(arr[3]), parseFloat(arr[32]), parseFloat(arr[31]));
+        ok++;
       });
-      $('source-label').textContent = '数据来源：腾讯（黄金/红利成长暂缺）';
+      if (ok > 0) setSource('数据来源：腾讯（ETF）+ 东方财富（黄金/红利）');
     };
     script.onerror = function () { if (!done) { done = true; cleanup(); } };
     script.src = 'https://qt.gtimg.cn/q=sz159501,sh513500';
     document.head.appendChild(script);
   }
 
+  // ---------- 东财 JSONP：黄金（脚本标签优先，fetch 兜底） ----------
+  function loadGold() {
+    jsonp(EM + '118.AU9999&cb=__cbAu', '__cbAu', 2500)
+      .then(function (data) {
+        var it = extract(data, 'AU9999');
+        if (it) setCard('AU9999', it.f2, it.f3, it.f4);
+      })
+      .catch(function () {
+        fetchJson(EM + '118.AU9999', 2500)
+          .then(function (data) {
+            var it = extract(data, 'AU9999');
+            if (it) setCard('AU9999', it.f2, it.f3, it.f4);
+          })
+          .catch(function () {});
+      });
+  }
+
+  // ---------- 东财 JSONP：红利成长（脚本标签优先，fetch 兜底） ----------
+  function loadIndex() {
+    jsonp(EM + '2.931157&cb=__cbIdx', '__cbIdx', 2500)
+      .then(function (data) {
+        var it = extract(data, '931157');
+        if (it) setCard('931157', it.f2, it.f3, it.f4);
+      })
+      .catch(function () {
+        fetchJson(EM + '2.931157', 2500)
+          .then(function (data) {
+            var it = extract(data, '931157');
+            if (it) setCard('931157', it.f2, it.f3, it.f4);
+          })
+          .catch(function () {});
+      });
+  }
+
   function refresh() {
     updateTime();
     updateStatus();
-    // 两个请求并行，都成功后才一次性渲染 4 个（原子渲染，同步出现）
-    Promise.all([
-      fetchWithRetry(EM_BASE + '0.159501,1.513500,2.931157', 1500),
-      fetchWithRetry(EM_BASE + '118.AU9999', 1500)
-    ]).then(function (rs) {
-      var map = {};
-      [rs[0], rs[1]].forEach(function (d) {
-        var diff = (d && d.data && d.data.diff) ? d.data.diff : [];
-        diff.forEach(function (it) { map[it.f12] = { p: it.f2, c: it.f3, a: it.f4 }; });
-      });
-      var missing = KEYS.filter(function (k) { return !map[k]; });
-      if (missing.length > 0) throw new Error('missing ' + missing.join(','));
-      KEYS.forEach(function (k) { setCard(k, map[k].p, map[k].c, map[k].a); });
-      $('source-label').textContent = '数据来源：东方财富';
-    }).catch(function () {
-      // 东财整体失败（已重试仍失败）→ 腾讯兜底 ETF；黄金/红利保持原值不闪「获取失败」
-      loadTencentEtf();
-    });
+    loadTencentEtf();   // ETF（腾讯）
+    loadGold();         // 黄金（东财 JSONP）
+    loadIndex();        // 红利成长（东财 JSONP）
   }
 
   function start() {
