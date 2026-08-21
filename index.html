@@ -95,6 +95,11 @@
       <div class="price-row"><span class="price" id="p-931157">—</span><span class="unit">点</span></div>
       <div class="change flat" id="c-931157"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
     </div>
+    <div class="card">
+      <div class="card-head"><span class="name">沪深300</span><span class="code">000300</span></div>
+      <div class="price-row"><span class="price" id="p-000300">—</span><span class="unit">点</span></div>
+      <div class="change flat" id="c-000300"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
+    </div>
   </div>
 
   <footer>
@@ -113,7 +118,8 @@
     '159501': { price: 3, change: 3 },
     '513500': { price: 3, change: 3 },
     'AU9999': { price: 2, change: 2 },
-    '931157': { price: 2, change: 2 }
+    '931157': { price: 2, change: 2 },
+    '000300': { price: 2, change: 2 }
   };
   var timer = null;
   function $(id) { return document.getElementById(id); }
@@ -233,18 +239,22 @@
       });
   }
 
-  // ---------- 东财 JSONP：红利成长（脚本标签优先，fetch 兜底） ----------
+  // ---------- 东财 JSONP：红利成长 + 沪深300（脚本标签优先，fetch 兜底） ----------
   function loadIndex() {
-    jsonp(EM + '2.931157&cb=__cbIdx', '__cbIdx', 2500)
+    jsonp(EM + '2.931157,1.000300&cb=__cbIdx', '__cbIdx', 2500)
       .then(function (data) {
         var it = extract(data, '931157');
         if (it) setCard('931157', it.f2, it.f3, it.f4);
+        var hs = extract(data, '000300');
+        if (hs) setCard('000300', hs.f2, hs.f3, hs.f4);
       })
       .catch(function () {
-        fetchJson(EM + '2.931157', 2500)
+        fetchJson(EM + '2.931157,1.000300', 2500)
           .then(function (data) {
             var it = extract(data, '931157');
             if (it) setCard('931157', it.f2, it.f3, it.f4);
+            var hs = extract(data, '000300');
+            if (hs) setCard('000300', hs.f2, hs.f3, hs.f4);
           })
           .catch(function () {});
       });
