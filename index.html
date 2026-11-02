@@ -90,21 +90,11 @@
       <div class="price-row"><span class="price" id="p-AU9999">—</span><span class="unit">元/克</span></div>
       <div class="change flat" id="c-AU9999"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
     </div>
-    <div class="card">
-      <div class="card-head"><span class="name">红利成长</span><span class="code">931157</span></div>
-      <div class="price-row"><span class="price" id="p-931157">—</span><span class="unit">点</span></div>
-      <div class="change flat" id="c-931157"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
-    </div>
-    <div class="card">
-      <div class="card-head"><span class="name">沪深300</span><span class="code">000300</span></div>
-      <div class="price-row"><span class="price" id="p-000300">—</span><span class="unit">点</span></div>
-      <div class="change flat" id="c-000300"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
-    </div>
   </div>
 
   <footer>
     <div id="source-label">数据来源：加载中…</div>
-    <div>每 45 秒自动刷新 · 行情仅供参考，不构成投资建议 · v5</div>
+    <div>每 45 秒自动刷新 · 行情仅供参考，不构成投资建议 · v6</div>
   </footer>
 </div>
 
@@ -117,9 +107,7 @@
   var DEC = {
     '159501': { price: 3, change: 3 },
     '513500': { price: 3, change: 3 },
-    'AU9999': { price: 2, change: 2 },
-    '931157': { price: 2, change: 2 },
-    '000300': { price: 2, change: 2 }
+    'AU9999': { price: 2, change: 2 }
   };
   var timer = null;
   function $(id) { return document.getElementById(id); }
@@ -215,7 +203,7 @@
         setCard(p[1], parseFloat(arr[3]), parseFloat(arr[32]), parseFloat(arr[31]));
         ok++;
       });
-      if (ok > 0) setSource('数据来源：腾讯（ETF）+ 东方财富（黄金/红利）');
+      if (ok > 0) setSource('数据来源：腾讯（ETF）+ 东方财富（黄金）');
     };
     script.onerror = function () { if (!done) { done = true; cleanup(); } };
     script.src = 'https://qt.gtimg.cn/q=sz159501,sh513500';
@@ -239,33 +227,11 @@
       });
   }
 
-  // ---------- 东财 JSONP：红利成长 + 沪深300（脚本标签优先，fetch 兜底） ----------
-  function loadIndex() {
-    jsonp(EM + '2.931157,1.000300&cb=__cbIdx', '__cbIdx', 2500)
-      .then(function (data) {
-        var it = extract(data, '931157');
-        if (it) setCard('931157', it.f2, it.f3, it.f4);
-        var hs = extract(data, '000300');
-        if (hs) setCard('000300', hs.f2, hs.f3, hs.f4);
-      })
-      .catch(function () {
-        fetchJson(EM + '2.931157,1.000300', 2500)
-          .then(function (data) {
-            var it = extract(data, '931157');
-            if (it) setCard('931157', it.f2, it.f3, it.f4);
-            var hs = extract(data, '000300');
-            if (hs) setCard('000300', hs.f2, hs.f3, hs.f4);
-          })
-          .catch(function () {});
-      });
-  }
-
   function refresh() {
     updateTime();
     updateStatus();
     loadTencentEtf();   // ETF（腾讯）
     loadGold();         // 黄金（东财 JSONP）
-    loadIndex();        // 红利成长（东财 JSONP）
   }
 
   function start() {
