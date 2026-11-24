@@ -90,11 +90,16 @@
       <div class="price-row"><span class="price" id="p-AU9999">—</span><span class="unit">元/克</span></div>
       <div class="change flat" id="c-AU9999"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
     </div>
+    <div class="card">
+      <div class="card-head"><span class="name">上证指数</span><span class="code">000001</span></div>
+      <div class="price-row"><span class="price" id="p-000001">—</span><span class="unit">点</span></div>
+      <div class="change flat" id="c-000001"><span class="arrow">—</span><span class="pct">—</span><span class="amt"></span></div>
+    </div>
   </div>
 
   <footer>
     <div id="source-label">数据来源：加载中…</div>
-    <div>每 45 秒自动刷新 · 行情仅供参考，不构成投资建议 · v6</div>
+    <div>每 45 秒自动刷新 · 行情仅供参考，不构成投资建议 · v7</div>
   </footer>
 </div>
 
@@ -107,7 +112,8 @@
   var DEC = {
     '159501': { price: 3, change: 3 },
     '513500': { price: 3, change: 3 },
-    'AU9999': { price: 2, change: 2 }
+    'AU9999': { price: 2, change: 2 },
+    '000001': { price: 2, change: 2 }
   };
   var timer = null;
   function $(id) { return document.getElementById(id); }
@@ -203,10 +209,22 @@
         setCard(p[1], parseFloat(arr[3]), parseFloat(arr[32]), parseFloat(arr[31]));
         ok++;
       });
-      if (ok > 0) setSource('数据来源：腾讯（ETF）+ 东方财富（黄金）');
+      // 上证指数（腾讯兜底）：仅当东财还没成功填充时才写入
+      var sh = window['v_sh000001'];
+      if (sh) {
+        var a = sh.split('~');
+        if (a.length >= 33) {
+          // 仅在东财尚未填充时才用腾讯兜底值，避免覆盖更权威的数据
+          var pEl = $('p-000001');
+          if (pEl && pEl.textContent === '—') {
+            setCard('000001', parseFloat(a[3]), parseFloat(a[32]), parseFloat(a[31]));
+          }
+        }
+      }
+      if (ok > 0) setSource('数据来源：腾讯（ETF/上证）+ 东方财富（黄金）');
     };
     script.onerror = function () { if (!done) { done = true; cleanup(); } };
-    script.src = 'https://qt.gtimg.cn/q=sz159501,sh513500';
+    script.src = 'https://qt.gtimg.cn/q=sz159501,sh513500,sh000001';
     document.head.appendChild(script);
   }
 
@@ -227,11 +245,29 @@
       });
   }
 
+  // ---------- 东财 JSONP：上证指数（脚本标签优先，fetch 兜底；腾讯再兜底） ----------
+  function loadIndex() {
+    jsonp(EM + '1.000001&cb=__cbIdx', '__cbIdx', 2500)
+      .then(function (data) {
+        var it = extract(data, '000001');
+        if (it) setCard('000001', it.f2, it.f3, it.f4);
+      })
+      .catch(function () {
+        fetchJson(EM + '1.000001', 2500)
+          .then(function (data) {
+            var it = extract(data, '000001');
+            if (it) setCard('000001', it.f2, it.f3, it.f4);
+          })
+          .catch(function () { /* 失败则由腾讯脚本标签兜底 */ });
+      });
+  }
+
   function refresh() {
     updateTime();
     updateStatus();
-    loadTencentEtf();   // ETF（腾讯）
+    loadTencentEtf();   // ETF + 上证指数兜底（腾讯）
     loadGold();         // 黄金（东财 JSONP）
+    loadIndex();        // 上证指数（东财 JSONP）
   }
 
   function start() {
